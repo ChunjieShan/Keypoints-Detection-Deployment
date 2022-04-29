@@ -1,8 +1,4 @@
-import time
-
-import onnxruntime as ort
-import cv2 as cv
-import numpy as np
+import matplotlib.pyplot as plt
 from utils import *
 
 classes = {0: 'wrist',
@@ -28,13 +24,16 @@ classes = {0: 'wrist',
            20: 'pinky_finger4'}
 
 
-results = do_inference("./onehand10k.onnx", "./6158.png")
+img, results = do_inference("./onehand10k.onnx", "./6158.png")
 print(results)
 
 lost = []
 
 for result in results:
     points, probs = result[0].tolist(), result[1].tolist()[0]
+    vis_pose(img, points[0])
+    plt.imshow(img)
+    plt.show()
 
 # print(probs)
 

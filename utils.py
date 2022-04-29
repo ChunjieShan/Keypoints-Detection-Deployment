@@ -50,7 +50,7 @@ def do_inference(onnx_model_path,
         single_frame_result = keypoints_from_heatmaps(result, center, scale)
         results_list.append(single_frame_result)
 
-    return results_list
+    return img, results_list
 
 
 def preprocess(image_path):
