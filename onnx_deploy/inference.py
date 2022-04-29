@@ -24,7 +24,7 @@ classes = {0: 'wrist',
            20: 'pinky_finger4'}
 
 
-img, results = do_inference("./onehand10k.onnx", "./6158.png")
+img, results = do_inference("../onehand10k.onnx", "../6158.png")
 print(results)
 
 lost = []

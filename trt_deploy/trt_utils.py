@@ -1,67 +1,107 @@
+import sys
+import os
 import numpy as np
+import tensorrt as trt
+import time
+import matplotlib.pyplot as plt
+import pycuda.autoinit
+import pycuda.driver as cuda
 import cv2 as cv
-import onnxruntime as ort
+
+from collections import OrderedDict
+from typing import List
+
+BATCH_SIZE = 1  # batch size
+CHANNEL = 3  # image's channel
+INPUT_IMG_H = 256  # height
+INPUT_IMG_W = 256  # width
+
+KEYPOINT_NUM = 21  # num of keypoint
+HEATMAP_HEIGHT = 64  # height of heatmap
+HEATMAP_WIDTH = 64  # width of heatmap
+
+INPUT_SHAPE = BATCH_SIZE * CHANNEL * INPUT_IMG_W * INPUT_IMG_H
+OUTPUT_SHAPE = BATCH_SIZE * KEYPOINT_NUM * HEATMAP_WIDTH * HEATMAP_HEIGHT
 
 
-def init_onnx_engine(onnx_model_path):
+def init_trt_engine(trt_path):
     """
-    Initialize ONNX session
-    :param onnx_model_path: str
+    Initialize tensorrt engine path
+    :param trt_path: TensorRT Engine path;
     :return:
     """
-    sess = ort.InferenceSession(onnx_model_path, providers=["CUDAExecutionProvider"])
-    return sess
+    logger = trt.Logger(trt.Logger.INFO)
+    with open(trt_path, 'rb') as f, trt.Runtime(logger) as runtime:
+        model = runtime.deserialize_cuda_engine(f.read())
+
+    context = model.create_execution_context()
+
+    return context
 
 
-def onnx_inference(session: ort.InferenceSession,
-                   img: np.array):
+def do_inference(context,
+                 preprocessed_img):
     """
-    ONNX engine inference;
-    :param session: onnxruntime inference session;
-    :param img: preprocessed image;
+    TensorRT engine inference;
+    :param context: TensorRT context;
+    :param preprocessed_img: image been preprocessed
     :return:
     """
-    input_tensor = session.get_inputs()
-    output_tensor = [node.name for node in session.get_outputs()]
-    results = session.run(output_tensor, {input_tensor[0].name: img})
+    host_in = cuda.pagelocked_empty(INPUT_SHAPE, dtype=np.float32)
+    np.copyto(host_in, preprocessed_img.ravel())
+    host_out = cuda.pagelocked_empty(OUTPUT_SHAPE, dtype=np.float32)
 
-    return results
+    engine = context.engine
+    device_in = cuda.mem_alloc(host_in.nbytes)
+    device_out = cuda.mem_alloc(host_out.nbytes)
+    bindings = [int(device_in), int(device_out)]
+    stream = cuda.Stream()
+
+    start = time.time()
+    # for _ in range(100):
+    cuda.memcpy_htod_async(device_in, host_in, stream)
+    context.execute_async(1, bindings, stream.handle)
+    cuda.memcpy_dtoh_async(host_out, device_out, stream)
+    stream.synchronize()
+    print("{} ms".format((time.time() - start) * 1000))
+    return host_out
 
 
-def do_inference(onnx_model_path,
-                 img_path):
+def trt_engine_inference(trt_path,
+                         img_path):
     """
     Initialize an ONNX model and do inference on a preprocessed image;
-    :param onnx_model_path: onnx model path
+    :param trt_path: onnx_deploy model path
     :param img_path:
     :return:
     """
-    img, preprocessed_img = preprocess(img_path)
-    sess = init_onnx_engine(onnx_model_path)
-    results = onnx_inference(sess, preprocessed_img)
+    img, preprocessed_img = preprocess(img_path, (256, 256))
+    context = init_trt_engine(trt_path)
+    host_out = do_inference(context, preprocessed_img)
 
     h, w, _ = img.shape
     center = np.array([[w / 2, h / 2]])
     scale = np.array([[w, h]])
+    preds, probs = keypoints_from_heatmaps(host_out, center, scale)
 
-    results_list = []
-
-    for result in results:
-        single_frame_result = keypoints_from_heatmaps(result, center, scale)
-        results_list.append(single_frame_result)
-
-    return img, results_list
+    for pred, prob in zip(preds, probs):
+        points, probs = pred.tolist(), prob.tolist()[0]
+        vis_pose(img, points)
+        plt.imshow(img)
+        plt.show()
 
 
-def preprocess(image_path):
+def preprocess(image_path,
+               img_size: tuple = (256, 256)):
     """
     Preprocessing image;
     :param image_path: str;
+    :param img_size: tuple, resize size;
     :return:
     """
     img = cv.imread(image_path)
     img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
-    img_preprocessed = cv.resize(img, (256, 256))
+    img_preprocessed = cv.resize(img, img_size)
     mean = np.array([0.485, 0.456, 0.406]).reshape(1, -1, 1, 1)
     std = np.array([0.229, 0.224, 0.225]).reshape(1, -1, 1, 1)
 
@@ -95,7 +135,7 @@ def get_max_preds(heatmaps: np.array):
     return preds, prob
 
 
-def transform_preds(coords: np.array,
+def transform_preds(coords: List,
                     center: np.array,
                     scale: np.array,
                     output_size: np.array):
@@ -117,16 +157,17 @@ def transform_preds(coords: np.array,
     return target_coords
 
 
-def keypoints_from_heatmaps(heatmaps: np.array,
+def keypoints_from_heatmaps(host_out: List,
                             center: np.array,
                             scale: np.array):
     """
     Post process of the inference
-    :param heatmaps: heatmaps that model predicted;
+    :param host_out: the output of the tensorrt engine.
     :param center: center of the bounding box;
     :param scale: scale of width and height;
     :return:
     """
+    heatmaps = np.array(host_out).reshape((1, 21, 64, 64))
     heatmaps = heatmaps.copy()
 
     N, K, H, W = heatmaps.shape
@@ -160,5 +201,3 @@ def vis_pose(img, points):
                    color=(255, 255, 255),
                    thickness=1, lineType=cv.LINE_AA)
     return img
-
-
