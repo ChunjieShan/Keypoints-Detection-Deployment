@@ -67,17 +67,26 @@ def do_inference(context,
     return host_out
 
 
-def trt_engine_inference(trt_path,
-                         img_path):
+def trt_engine_inference(trt_context,
+                         img_path,
+                         show_img: bool = True):
     """
     Initialize an ONNX model and do inference on a preprocessed image;
-    :param trt_path: onnx_deploy model path
-    :param img_path:
+    :param trt_context: onnx_deploy model path;
+    :param img_path: image path;
+    :param show_img: show image or not;
     :return:
     """
     img, preprocessed_img = preprocess(img_path, (256, 256))
-    context = init_trt_engine(trt_path)
-    host_out = do_inference(context, preprocessed_img)
+    if isinstance(trt_context, str):
+        _context = init_trt_engine(trt_context)
+    elif isinstance(trt_context, trt.IExecutionContext):
+        _context = trt_context
+    else:
+        _context = None
+
+    assert _context is not None, "Your TensorRT IExecution Context is empty!"
+    host_out = do_inference(_context, preprocessed_img)
 
     h, w, _ = img.shape
     center = np.array([[w / 2, h / 2]])
@@ -87,8 +96,25 @@ def trt_engine_inference(trt_path,
     for pred, prob in zip(preds, probs):
         points, probs = pred.tolist(), prob.tolist()[0]
         vis_pose(img, points)
-        plt.imshow(img)
-        plt.show()
+        if show_img:
+            plt.imshow(img)
+            plt.show()
+
+
+def trt_engine_server_inference(context: trt.IExecutionContext,
+                                img_path: str,
+                                show_img: bool = True):
+    """
+    TensorRT inference engine inference when launched by Flask.
+    It s different from `trt_engine_inference` API. This API won't
+    initiate the TensorRT Context, and you need to pass initialized
+    TensorRT context to this API;
+    :param context: tensorrt.IExecutionContext;
+    :param img_path: str;
+    :param show_img: bool, show image or not;
+    :return:
+    """
+    trt_engine_inference(context, img_path, show_img)
 
 
 def preprocess(image_path,
