@@ -1,16 +1,24 @@
+import os
 import numpy as np
 import cv2 as cv
 import onnxruntime as ort
 import time
+import datetime
+import matplotlib.pyplot as plt
 
 
-def init_onnx_engine(onnx_model_path):
+def init_onnx_engine(onnx_model_path, device=None):
     """
     Initialize ONNX session
     :param onnx_model_path: str
     :return:
     """
-    sess = ort.InferenceSession(onnx_model_path, providers=["CUDAExecutionProvider"])
+    if device == "gpu" or None:
+        providers = "CUDAExecutionProvider"
+    else:
+        providers = "CPUExecutionProvider"
+
+    sess = ort.InferenceSession(onnx_model_path, providers=[providers])
     return sess
 
 
@@ -19,7 +27,7 @@ def onnx_inference(session: ort.InferenceSession,
     """
     ONNX engine inference;
     :param session: onnxruntime inference session;
-    :param img: preprocessed image;
+    :param img: preprocessed images;
     :return:
     """
     input_tensor = session.get_inputs()
@@ -29,16 +37,28 @@ def onnx_inference(session: ort.InferenceSession,
     return results
 
 
-def do_inference(onnx_model_path,
-                 img_path):
+def do_inference(onnx_session,
+                 img_path,
+                 show_img: bool = False,
+                 save_dir: str = None):
     """
-    Initialize an ONNX model and do inference on a preprocessed image;
-    :param onnx_model_path: onnx_deploy model path
+    Initialize an ONNX model and do inference on a preprocessed images;
+    :param onnx_session: onnx_deploy model path, or onnx session
     :param img_path:
+    :param show_img: vis images or not;
+    :param save_dir: images save directory;
     :return:
     """
     img, preprocessed_img = preprocess(img_path)
-    sess = init_onnx_engine(onnx_model_path)
+
+    if isinstance(onnx_session, str):
+        sess = init_onnx_engine(onnx_session)
+    elif isinstance(onnx_session, ort.InferenceSession):
+        sess = onnx_session
+    else:
+        sess = None
+
+    assert sess is not None, "Your ONNXRuntime Session is None!"
     curr_time = time.time()
     results = onnx_inference(sess, preprocessed_img)
     print("{} ms".format((time.time() - curr_time) * 1000))
@@ -48,18 +68,41 @@ def do_inference(onnx_model_path,
     scale = np.array([[w, h]])
 
     results_list = []
+    img_save_path = None
 
     for result in results:
         single_frame_result = keypoints_from_heatmaps(result, center, scale)
         results_list.append(single_frame_result)
 
-    return img, results_list
+    for result in results_list:
+        points, probs = result[0].tolist(), result[1].tolist()[0]
+        vis_pose(img, points[0])
+        if show_img:
+            plt.imshow(img)
+            plt.show()
+
+        if save_dir is not None:
+            assert os.path.exists(save_dir), "Your images save directory do not exist."
+            curr_date = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+            img_save_path = os.path.join(save_dir, curr_date + '.jpg')
+            plt.imsave(img_save_path, img)
+            # cv.imwrite(img_save_path, img)
+
+    return img_save_path
+
+
+def onnx_server_inference(onnx_session: ort.InferenceSession,
+                          img_path: str,
+                          save_dir: str):
+    save_path = do_inference(onnx_session, img_path, False, save_dir)
+
+    return save_path
 
 
 def preprocess(image_path,
                img_size: tuple = (256, 256)):
     """
-    Preprocessing image;
+    Preprocessing images;
     :param image_path: str;
     :param img_size: tuple, resize size;
     :return:
@@ -105,7 +148,7 @@ def transform_preds(coords: np.array,
                     scale: np.array,
                     output_size: np.array):
     """
-    Get final prediction of keypoint coordinates, and map them back to the image;
+    Get final prediction of keypoint coordinates, and map them back to the images;
     :param coords: ndarray, [N, 2]
     :param center: ndarray, [2]
     :param scale:  ndarray, [2]

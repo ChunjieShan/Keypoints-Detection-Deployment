@@ -7,12 +7,13 @@ import matplotlib.pyplot as plt
 import pycuda.autoinit
 import pycuda.driver as cuda
 import cv2 as cv
+import datetime
 
 from collections import OrderedDict
 from typing import List
 
 BATCH_SIZE = 1  # batch size
-CHANNEL = 3  # image's channel
+CHANNEL = 3  # images's channel
 INPUT_IMG_H = 256  # height
 INPUT_IMG_W = 256  # width
 
@@ -44,7 +45,7 @@ def do_inference(context,
     """
     TensorRT engine inference;
     :param context: TensorRT context;
-    :param preprocessed_img: image been preprocessed
+    :param preprocessed_img: images been preprocessed
     :return:
     """
     host_in = cuda.pagelocked_empty(INPUT_SHAPE, dtype=np.float32)
@@ -69,12 +70,14 @@ def do_inference(context,
 
 def trt_engine_inference(trt_context,
                          img_path,
-                         show_img: bool = True):
+                         show_img: bool = True,
+                         save_img_root_path: str = None):
     """
-    Initialize an ONNX model and do inference on a preprocessed image;
+    Initialize an ONNX model and do inference on a preprocessed images;
     :param trt_context: onnx_deploy model path;
-    :param img_path: image path;
-    :param show_img: show image or not;
+    :param img_path: images path;
+    :param show_img: show images or not;
+    :param save_img_root_path: parent dir you save your images;
     :return:
     """
     img, preprocessed_img = preprocess(img_path, (256, 256))
@@ -99,11 +102,18 @@ def trt_engine_inference(trt_context,
         if show_img:
             plt.imshow(img)
             plt.show()
+        if len(save_img_root_path):
+            curr_date = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+            img_path = os.path.join(save_img_root_path, curr_date + '.jpg')
+            cv.imwrite(img_path, img)
+
+    return img_path
 
 
 def trt_engine_server_inference(context: trt.IExecutionContext,
                                 img_path: str,
-                                show_img: bool = True):
+                                show_img: bool = True,
+                                save_img_root_path: str = None):
     """
     TensorRT inference engine inference when launched by Flask.
     It s different from `trt_engine_inference` API. This API won't
@@ -111,16 +121,19 @@ def trt_engine_server_inference(context: trt.IExecutionContext,
     TensorRT context to this API;
     :param context: tensorrt.IExecutionContext;
     :param img_path: str;
-    :param show_img: bool, show image or not;
+    :param show_img: bool, show images or not;
+    :param save_img_root_path: where to save your visible images;
     :return:
     """
-    trt_engine_inference(context, img_path, show_img)
+    img_name = trt_engine_inference(context, img_path, show_img, save_img_root_path)
+
+    return img_name
 
 
 def preprocess(image_path,
                img_size: tuple = (256, 256)):
     """
-    Preprocessing image;
+    Preprocessing images;
     :param image_path: str;
     :param img_size: tuple, resize size;
     :return:
@@ -166,7 +179,7 @@ def transform_preds(coords: List,
                     scale: np.array,
                     output_size: np.array):
     """
-    Get final prediction of keypoint coordinates, and map them back to the image;
+    Get final prediction of keypoint coordinates, and map them back to the images;
     :param coords: ndarray, [N, 2]
     :param center: ndarray, [2]
     :param scale:  ndarray, [2]

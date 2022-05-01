@@ -24,19 +24,19 @@ classes = {0: 'wrist',
            20: 'pinky_finger4'}
 
 
-img, results = do_inference("../onehand10k.onnx", "../6158.png")
-print(results)
+img_save_path = do_inference("../onehand10k.onnx", "../6158.png", False, "./images")
+print(img_save_path)
 
 lost = []
 
-for result in results:
-    points, probs = result[0].tolist(), result[1].tolist()[0]
-    vis_pose(img, points[0])
-    plt.imshow(img)
-    plt.show()
+# for result in results:
+#     points, probs = result[0].tolist(), result[1].tolist()[0]
+#     vis_pose(img, points[0])
+#     plt.imshow(img)
+#     plt.show()
 
 # print(probs)
 
-for i in range(21):
-    if probs[i][0] < 0.3:
-        print(classes[i])
+# for i in range(21):
+#     if probs[i][0] < 0.3:
+#         print(classes[i])
