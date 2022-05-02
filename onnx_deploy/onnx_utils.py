@@ -10,15 +10,25 @@ import matplotlib.pyplot as plt
 def init_onnx_engine(onnx_model_path, device=None):
     """
     Initialize ONNX session
+    :param device: device you want to run at;
     :param onnx_model_path: str
     :return:
     """
-    if device == "gpu" or None:
-        providers = "CUDAExecutionProvider"
-    else:
-        providers = "CPUExecutionProvider"
+    providers = None
+    if device == "gpu":
+        providers = [
+            ('CUDAExecutionProvider', {
+                'device_id': 0,
+                'arena_extend_strategy': 'kNextPowerOfTwo',
+                'gpu_mem_limit': 2 * 1024 * 1024 * 1024,  # 2GB
+                'cudnn_conv_algo_search': 'EXHAUSTIVE',
+                'do_copy_in_default_stream': True,
+            })
+        ]
+    elif device == "cpu" or None:
+        providers = ["CPUExecutionProvider"]
 
-    sess = ort.InferenceSession(onnx_model_path, providers=[providers])
+    sess = ort.InferenceSession(onnx_model_path, providers=providers)
     return sess
 
 
@@ -38,12 +48,14 @@ def onnx_inference(session: ort.InferenceSession,
 
 
 def do_inference(onnx_session,
-                 img_path,
+                 device: str = None,
+                 img_path: str = None,
                  show_img: bool = False,
                  save_dir: str = None):
     """
     Initialize an ONNX model and do inference on a preprocessed images;
     :param onnx_session: onnx_deploy model path, or onnx session
+    :param device: device you want to run at, `cpu` or `gpu`.
     :param img_path:
     :param show_img: vis images or not;
     :param save_dir: images save directory;
@@ -52,7 +64,7 @@ def do_inference(onnx_session,
     img, preprocessed_img = preprocess(img_path)
 
     if isinstance(onnx_session, str):
-        sess = init_onnx_engine(onnx_session)
+        sess = init_onnx_engine(onnx_session, device)
     elif isinstance(onnx_session, ort.InferenceSession):
         sess = onnx_session
     else:
@@ -61,6 +73,7 @@ def do_inference(onnx_session,
     assert sess is not None, "Your ONNXRuntime Session is None!"
     curr_time = time.time()
     results = onnx_inference(sess, preprocessed_img)
+    # print(results[0].shape)
     print("{} ms".format((time.time() - curr_time) * 1000))
 
     h, w, _ = img.shape
@@ -70,31 +83,38 @@ def do_inference(onnx_session,
     results_list = []
     img_save_path = None
 
+    points_list = []
+    probs_list = []
+
     for result in results:
         single_frame_result = keypoints_from_heatmaps(result, center, scale)
-        results_list.append(single_frame_result)
-
-    for result in results_list:
-        points, probs = result[0].tolist(), result[1].tolist()[0]
-        vis_pose(img, points[0])
-        if show_img:
-            plt.imshow(img)
-            plt.show()
+        points, probs = single_frame_result[0].tolist(), single_frame_result[1].tolist()
+        for point in points:
+            vis_pose(img, point)
+        points_list.append(points)
+        probs_list.append(probs)
 
         if save_dir is not None:
             assert os.path.exists(save_dir), "Your images save directory do not exist."
             curr_date = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
             img_save_path = os.path.join(save_dir, curr_date + '.jpg')
-            plt.imsave(img_save_path, img)
-            # cv.imwrite(img_save_path, img)
+            # plt.imsave(img_save_path, img)
+            cv.imwrite(img_save_path, img)
 
-    return img_save_path
+    return points_list, probs_list
 
 
 def onnx_server_inference(onnx_session: ort.InferenceSession,
-                          img_path: str,
-                          save_dir: str):
-    save_path = do_inference(onnx_session, img_path, False, save_dir)
+                          img_path: str = None,
+                          save_dir: str = None):
+    """
+    For continuous inference, you need to pass an ONNX Inference Session to this API;
+    :param onnx_session:
+    :param img_path:
+    :param save_dir:
+    :return:
+    """
+    save_path = do_inference(onnx_session, img_path=img_path, show_img=False, save_dir=save_dir)
 
     return save_path
 
@@ -136,8 +156,8 @@ def get_max_preds(heatmaps: np.array):
     prob = np.amax(heatmaps_reshaped, 2).reshape((N, K, 1))
 
     preds = np.tile(idx, (1, 1, 2)).astype(np.float32)
-    preds[:, :, 0] = preds[:, :, 0] % W
-    preds[:, :, 1] = preds[:, :, 1] // W
+    preds[:, :, 0] = preds[:, :, 0] % W  # get x coordinate(width)
+    preds[:, :, 1] = preds[:, :, 1] // W  # get y coordinate(height)
 
     preds = np.where(np.tile(prob, (1, 1, 2)) > 0.0, preds, -1)
     return preds, prob
@@ -150,7 +170,7 @@ def transform_preds(coords: np.array,
     """
     Get final prediction of keypoint coordinates, and map them back to the images;
     :param coords: ndarray, [N, 2]
-    :param center: ndarray, [2]
+    :param center: bounding box of RoI, ndarray, [2];
     :param scale:  ndarray, [2]
     :param output_size: [64, 64]
     :return:
@@ -177,6 +197,10 @@ def keypoints_from_heatmaps(heatmaps: np.array,
     """
     heatmaps = heatmaps.copy()
 
+    # N: batch size
+    # K: num of keypoint
+    # H: height
+    # W: weight
     N, K, H, W = heatmaps.shape
     preds, prob = get_max_preds(heatmaps)
 
@@ -189,7 +213,7 @@ def keypoints_from_heatmaps(heatmaps: np.array,
                 diff = np.array([
                     heatmap[py][px + 1] - heatmap[py][px - 1],
                     heatmap[py + 1][px] - heatmap[py - 1][px]
-                ])
+                ])  # differentiation
                 preds[n][k] += np.sign(diff) * 0.25
 
     for i in range(N):
@@ -208,5 +232,3 @@ def vis_pose(img, points):
                    color=(255, 255, 255),
                    thickness=1, lineType=cv.LINE_AA)
     return img
-
-

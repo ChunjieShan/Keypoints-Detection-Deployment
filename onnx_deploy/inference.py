@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-from utils import *
+from onnx_utils import init_onnx_engine, onnx_server_inference
 
 classes = {0: 'wrist',
            1: 'thumb1',
@@ -23,9 +23,12 @@ classes = {0: 'wrist',
            19: 'pinky_finger3',
            20: 'pinky_finger4'}
 
+session = init_onnx_engine("../ddh.onnx", device="gpu")
 
-img_save_path = do_inference("../onehand10k.onnx", "../6158.png", False, "./images")
-print(img_save_path)
+for _ in range(50):
+    onnx_server_inference(session, img_path="../00001.png", save_dir="./images")
+    # img_save_path = do_inference("../onehand10k.onnx", "gpu", "../6158.png", False, "./images")
+# print(img_save_path)
 
 lost = []
 
