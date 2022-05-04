@@ -16,15 +16,15 @@ def init_onnx_engine(onnx_model_path, device=None):
     """
     providers = None
     if device == "gpu":
-        providers = [
-            ('CUDAExecutionProvider', {
+        providers = [(
+            'CUDAExecutionProvider',
+            {
                 'device_id': 0,
                 'arena_extend_strategy': 'kNextPowerOfTwo',
-                'gpu_mem_limit': 2 * 1024 * 1024 * 1024,  # 2GB
+                'gpu_mem_limit': 2 * 1024 * 1024 * 1024, # 2GB
                 'cudnn_conv_algo_search': 'EXHAUSTIVE',
                 'do_copy_in_default_stream': True,
-            })
-        ]
+            })]
     elif device == "cpu" or None:
         providers = ["CPUExecutionProvider"]
 
@@ -32,8 +32,7 @@ def init_onnx_engine(onnx_model_path, device=None):
     return sess
 
 
-def onnx_inference(session: ort.InferenceSession,
-                   img: np.array):
+def onnx_inference(session: ort.InferenceSession, img: np.array):
     """
     ONNX engine inference;
     :param session: onnxruntime inference session;
@@ -88,14 +87,16 @@ def do_inference(onnx_session,
 
     for result in results:
         single_frame_result = keypoints_from_heatmaps(result, center, scale)
-        points, probs = single_frame_result[0].tolist(), single_frame_result[1].tolist()
+        points, probs = single_frame_result[0].tolist(
+        ), single_frame_result[1].tolist()
         for point in points:
             vis_pose(img, point)
         points_list.append(points)
         probs_list.append(probs)
 
         if save_dir is not None:
-            assert os.path.exists(save_dir), "Your images save directory do not exist."
+            assert os.path.exists(
+                save_dir), "Your images save directory do not exist."
             curr_date = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
             img_save_path = os.path.join(save_dir, curr_date + '.jpg')
             # plt.imsave(img_save_path, img)
@@ -114,13 +115,15 @@ def onnx_server_inference(onnx_session: ort.InferenceSession,
     :param save_dir:
     :return:
     """
-    save_path = do_inference(onnx_session, img_path=img_path, show_img=False, save_dir=save_dir)
+    save_path = do_inference(onnx_session,
+                             img_path=img_path,
+                             show_img=False,
+                             save_dir=save_dir)
 
     return save_path
 
 
-def preprocess(image_path,
-               img_size: tuple = (256, 256)):
+def preprocess(image_path, img_size: tuple = (256, 256)):
     """
     Preprocessing images;
     :param image_path: str;
@@ -156,16 +159,14 @@ def get_max_preds(heatmaps: np.array):
     prob = np.amax(heatmaps_reshaped, 2).reshape((N, K, 1))
 
     preds = np.tile(idx, (1, 1, 2)).astype(np.float32)
-    preds[:, :, 0] = preds[:, :, 0] % W  # get x coordinate(width)
-    preds[:, :, 1] = preds[:, :, 1] // W  # get y coordinate(height)
+    preds[:, :, 0] = preds[:, :, 0] % W # get x coordinate(width)
+    preds[:, :, 1] = preds[:, :, 1] // W # get y coordinate(height)
 
     preds = np.where(np.tile(prob, (1, 1, 2)) > 0.0, preds, -1)
     return preds, prob
 
 
-def transform_preds(coords: np.array,
-                    center: np.array,
-                    scale: np.array,
+def transform_preds(coords: np.array, center: np.array, scale: np.array,
                     output_size: np.array):
     """
     Get final prediction of keypoint coordinates, and map them back to the images;
@@ -185,8 +186,7 @@ def transform_preds(coords: np.array,
     return target_coords
 
 
-def keypoints_from_heatmaps(heatmaps: np.array,
-                            center: np.array,
+def keypoints_from_heatmaps(heatmaps: np.array, center: np.array,
                             scale: np.array):
     """
     Post process of the inference
@@ -213,7 +213,7 @@ def keypoints_from_heatmaps(heatmaps: np.array,
                 diff = np.array([
                     heatmap[py][px + 1] - heatmap[py][px - 1],
                     heatmap[py + 1][px] - heatmap[py - 1][px]
-                ])  # differentiation
+                ]) # differentiation
                 preds[n][k] += np.sign(diff) * 0.25
 
     for i in range(N):
@@ -227,8 +227,15 @@ def vis_pose(img, points):
         x, y = point
         x = int(x)
         y = int(y)
-        cv.circle(img, (x, y), 4, (0, 0, 255), thickness=-1, lineType=cv.FILLED)
-        cv.putText(img, '{}'.format(i), (x, y), fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=0.5,
+        cv.circle(img, (x, y),
+                  4, (0, 0, 255),
+                  thickness=-1,
+                  lineType=cv.FILLED)
+        cv.putText(img,
+                   '{}'.format(i), (x, y),
+                   fontFace=cv.FONT_HERSHEY_SIMPLEX,
+                   fontScale=0.5,
                    color=(255, 255, 255),
-                   thickness=1, lineType=cv.LINE_AA)
+                   thickness=1,
+                   lineType=cv.LINE_AA)
     return img

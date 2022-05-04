@@ -45,7 +45,8 @@ def upload_file():
         # file.save(src_path)
         # shutil.copy(src_path, './temp/uploads')
         # image_path = os.path.join('./temp/uploads', file.filename)
-        points_list, probs_list = onnx_server_inference(onnx_session, file_path, "./images/")
+        points_list, probs_list = onnx_server_inference(
+            onnx_session, file_path, "./images/")
         return flask.jsonify({
             'status': 1,
             'points': points_list,
