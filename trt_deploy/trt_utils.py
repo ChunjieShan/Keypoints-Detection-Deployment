@@ -125,7 +125,8 @@ def trt_engine_server_inference(context: trt.IExecutionContext,
     :param save_img_root_path: where to save your visible images;
     :return:
     """
-    img_name = trt_engine_inference(context, img_path, show_img, save_img_root_path)
+    img_name = trt_engine_inference(
+        context, img_path, show_img, save_img_root_path)
 
     return img_name
 
@@ -235,7 +236,8 @@ def vis_pose(img, points):
         x, y = point
         x = int(x)
         y = int(y)
-        cv.circle(img, (x, y), 4, (0, 0, 255), thickness=-1, lineType=cv.FILLED)
+        cv.circle(img, (x, y), 4, (0, 0, 255),
+                  thickness=-1, lineType=cv.FILLED)
         cv.putText(img, '{}'.format(i), (x, y), fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=0.5,
                    color=(255, 255, 255),
                    thickness=1, lineType=cv.LINE_AA)
