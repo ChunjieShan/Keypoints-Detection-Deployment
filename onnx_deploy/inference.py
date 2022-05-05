@@ -1,4 +1,22 @@
+import argparse
 from onnx_utils import init_onnx_engine, onnx_server_inference
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--weights',
+                        type=str,
+                        default='../ddh.onnx',
+                        help="ONNX weights path.")
+    parser.add_argument('--device', type=str, help="[gpu/cpu].")
+    parser.add_argument('--image', type=str, help="image path.")
+    parser.add_argument('--save_dir',
+                        type=str,
+                        default='./images',
+                        help="path you save your result.")
+
+    return parser.parse_args()
+
 
 classes = {0: 'wrist',
            1: 'thumb1',
@@ -22,11 +40,12 @@ classes = {0: 'wrist',
            19: 'pinky_finger3',
            20: 'pinky_finger4'}
 
-session = init_onnx_engine("../ddh.onnx", device="gpu")
+parse = parse_args()
+session = init_onnx_engine(parse.weights, device=parse.device)
 
 for _ in range(50):
     onnx_server_inference(
-        session, img_path="../00001.png", save_dir="./images")
+        session, img_path=parse.image, save_dir=parse.save_dir)
     # img_save_path = do_inference("../onehand10k.onnx", "gpu", "../6158.png", False, "./images")
 # print(img_save_path)
 
