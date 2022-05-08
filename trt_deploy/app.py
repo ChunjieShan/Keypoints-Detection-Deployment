@@ -45,7 +45,8 @@ def upload_file():
         # file.save(src_path)
         # shutil.copy(src_path, './temp/uploads')
         # image_path = os.path.join('./temp/uploads', file.filename)
-        img_save_path = trt_engine_server_inference(trt_context, file_path, False, "./images/")
+        img_save_path = trt_engine_server_inference(
+            trt_context, file_path, False, "./images/")
         return flask.jsonify({
             'status': 1,
             'img_path': img_save_path

@@ -1,6 +1,7 @@
-import flask
 import logging
 import os
+import flask
+
 from flask_cors import CORS
 from flask import Flask
 from datetime import timedelta
@@ -45,10 +46,11 @@ def upload_file():
         # file.save(src_path)
         # shutil.copy(src_path, './temp/uploads')
         # image_path = os.path.join('./temp/uploads', file.filename)
-        points_list, probs_list = onnx_server_inference(
+        save_path, points_list, probs_list = onnx_server_inference(
             onnx_session, file_path, "./images/")
         return flask.jsonify({
             'status': 1,
+            'save_path': save_path,
             'points': points_list,
             'probs': probs_list
         })
@@ -64,4 +66,4 @@ if __name__ == '__main__':
     for ff in files:
         if not os.path.exists(ff):
             os.makedirs(ff)
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=8080, debug=True)

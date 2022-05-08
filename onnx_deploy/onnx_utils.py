@@ -21,7 +21,7 @@ def init_onnx_engine(onnx_model_path, device=None):
             {
                 'device_id': 0,
                 'arena_extend_strategy': 'kNextPowerOfTwo',
-                'gpu_mem_limit': 2 * 1024 * 1024 * 1024, # 2GB
+                'gpu_mem_limit': 2 * 1024 * 1024 * 1024,  # 2GB
                 'cudnn_conv_algo_search': 'EXHAUSTIVE',
                 'do_copy_in_default_stream': True,
             })]
@@ -102,7 +102,7 @@ def do_inference(onnx_session,
             # plt.imsave(img_save_path, img)
             cv.imwrite(img_save_path, img)
 
-    return points_list, probs_list
+    return img_save_path, points_list, probs_list
 
 
 def onnx_server_inference(onnx_session: ort.InferenceSession,
@@ -115,12 +115,12 @@ def onnx_server_inference(onnx_session: ort.InferenceSession,
     :param save_dir:
     :return:
     """
-    save_path = do_inference(onnx_session,
-                             img_path=img_path,
-                             show_img=False,
-                             save_dir=save_dir)
+    save_path, points_list, probs_list = do_inference(onnx_session,
+                                                      img_path=img_path,
+                                                      show_img=False,
+                                                      save_dir=save_dir)
 
-    return save_path
+    return save_path, points_list, probs_list
 
 
 def preprocess(image_path, img_size: tuple = (256, 256)):
@@ -159,15 +159,17 @@ def get_max_preds(heatmaps: np.array):
     prob = np.amax(heatmaps_reshaped, 2).reshape((N, K, 1))
 
     preds = np.tile(idx, (1, 1, 2)).astype(np.float32)
-    preds[:, :, 0] = preds[:, :, 0] % W # get x coordinate(width)
-    preds[:, :, 1] = preds[:, :, 1] // W # get y coordinate(height)
+    preds[:, :, 0] = preds[:, :, 0] % W  # get x coordinate(width)
+    preds[:, :, 1] = preds[:, :, 1] // W  # get y coordinate(height)
 
     preds = np.where(np.tile(prob, (1, 1, 2)) > 0.0, preds, -1)
     return preds, prob
 
 
-def transform_preds(coords: np.array, center: np.array, scale: np.array,
-                    output_size: np.array):
+def transform_preds(coords: np.ndarray,
+                    center: np.ndarray,
+                    scale: np.ndarray,
+                    output_size: np.ndarray):
     """
     Get final prediction of keypoint coordinates, and map them back to the images;
     :param coords: ndarray, [N, 2]
@@ -213,7 +215,7 @@ def keypoints_from_heatmaps(heatmaps: np.array, center: np.array,
                 diff = np.array([
                     heatmap[py][px + 1] - heatmap[py][px - 1],
                     heatmap[py + 1][px] - heatmap[py - 1][px]
-                ]) # differentiation
+                ])  # differentiation
                 preds[n][k] += np.sign(diff) * 0.25
 
     for i in range(N):
